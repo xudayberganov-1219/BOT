@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+restartPolicyType = "never"
+healthcheckPath = "/health"
+healthcheckTimeout = 300

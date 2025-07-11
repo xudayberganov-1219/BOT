@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Konfiguratsiya
 TOKEN = os.getenv('TOKEN', '7619009078:AAF7TKU9j4QikKjIb46BZktox3-MCd9SbME')
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@IT_kanal_oo1')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://web-production-65853.up.railway.app/')
+WEBHOOK_URL = os.getenv('WEBHOOK_URL', 'https://web-production-65853.up.railway.app')
 PORT = int(os.getenv('PORT', 8000))
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 

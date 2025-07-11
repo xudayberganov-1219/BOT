@@ -3,10 +3,14 @@ import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from yt_dlp import YoutubeDL
+from aiohttp import web
+import logging
 
 # --- BOT VA WEBHOOK SOZLAMALARI ---
 TOKEN = "7619009078:AAF7TKU9j4QikKjIb46BZktox3-MCd9SbME"
 WEBHOOK_URL = "https://web-production-65853.up.railway.app"
+WEBHOOK_PATH = "/webhook"
+PORT = int(os.environ.get("PORT", 8080))
 
 # --- COOKIE MATNLARI (To'g'ridan-to'g'ri shu yerga kiritilsin) ---
 COOKIES_INSTAGRAM = """
@@ -37,7 +41,6 @@ COOKIES_YOUTUBE = """
 bot = Bot(token=TOKEN)
 dp = Dispatcher(bot)
 
-# Temporary storage path for downloads
 DOWNLOAD_DIR = "downloads"
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
@@ -46,7 +49,6 @@ def save_cookies_to_file(text: str, filename: str):
     with open(filename, "w", encoding="utf-8") as f:
         f.write(text.strip())
 
-# Save cookies to files for yt-dlp use
 INSTAGRAM_COOKIES_FILE = "cookies_instagram.txt"
 YOUTUBE_COOKIES_FILE = "cookies_youtube.txt"
 
@@ -64,7 +66,6 @@ def download_video(url: str, cookies_file: str) -> str:
         'retries': 3,
         'ignoreerrors': True,
     }
-
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         if info is None:
@@ -80,7 +81,6 @@ async def send_welcome(message: types.Message):
 async def handle_message(message: types.Message):
     url = message.text.strip()
 
-    # Faqat Instagram yoki YouTube linklarini qabul qilish
     if not ("instagram.com" in url or "youtube.com" in url or "youtu.be" in url):
         await message.answer("Kechirasiz, faqat Instagram va YouTube linklarini yuboring.")
         return
@@ -98,47 +98,34 @@ async def handle_message(message: types.Message):
         with open(filepath, "rb") as video_file:
             await message.answer_document(video_file)
 
-        # Faylni o'chirish
         os.remove(filepath)
 
     except Exception as e:
         await message.answer(f"Uzr, video yuklashda xatolik yuz berdi:\n{str(e)}\nIltimos, linkni tekshiring va qayta urinib ko‘ring.")
 
+# --- WEBHOOK VA SERVER SOZLAMALARI ---
+async def on_startup(dispatcher):
+    await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
+
+async def on_shutdown(dispatcher):
+    await bot.delete_webhook()
+
+app = web.Application()
+
+async def health(request):
+    return web.Response(text="OK")
+
+async def webhook_handler(request):
+    update = await request.json()
+    TelegramUpdate = types.Update.to_object(update)
+    await dp.process_update(TelegramUpdate)
+    return web.Response(text="OK")
+
+app.router.add_post(WEBHOOK_PATH, webhook_handler)
+app.router.add_get('/health', health)
+
 if __name__ == "__main__":
-    # Agar Railway kabi platformada webhook ishlatilsa quyidagilarni yozish kerak:
-    from aiogram import executor
-    import logging
     logging.basicConfig(level=logging.INFO)
-
-    # Webhook URL va path
-    WEBHOOK_PATH = "/webhook"
-    WEBHOOK_HOST = WEBHOOK_URL
-    WEBHOOK_URL_PATH = WEBHOOK_PATH
-
-    async def on_startup(dispatcher):
-        await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
-
-    async def on_shutdown(dispatcher):
-        await bot.delete_webhook()
-
-    from aiohttp import web
-
-    app = web.Application()
-
-    async def handle(request):
-        if request.match_info.get('token') == TOKEN.split(":")[0]:
-            return web.Response(text="OK")
-        else:
-            return web.Response(status=403)
-
-    async def webhook_handler(request):
-        update = await request.json()
-        TelegramUpdate = types.Update.to_object(update)
-        await dp.process_update(TelegramUpdate)
-        return web.Response(text="OK")
-
-    app.router.add_post(WEBHOOK_PATH, webhook_handler)
-    app.router.add_get('/health', handle)
 
     executor.start_webhook(
         dispatcher=dp,
@@ -147,5 +134,5 @@ if __name__ == "__main__":
         on_shutdown=on_shutdown,
         skip_updates=True,
         host="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
+        port=PORT,
     )

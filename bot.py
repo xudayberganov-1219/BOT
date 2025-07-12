@@ -1,47 +1,60 @@
 from flask import Flask, request, jsonify
 import yt_dlp
-import os
 import requests
+import os
 
 app = Flask(__name__)
-os.makedirs("downloads", exist_ok=True)
 
-@app.route("/")
-def home():
-    return "VidDrop bot ishlayapti!"
-
-# ✅ Health check endpoint
-@app.route("/health")
-def health():
-    return "ok", 200
-
-@app.route("/download", methods=["POST"])
-def download():
+@app.route('/download', methods=['POST'])
+def download_video():
     try:
         data = request.get_json()
         url = data.get("url")
-        if not url:
-            return jsonify({"error": "URL topilmadi"}), 400
 
+        # URL tekshiruvi
+        if not url or not url.startswith("http"):
+            return jsonify({"error": "Yaroqsiz URL"}), 400
+
+        # Foyil nomi
+        filename = "video.mp4"
+
+        # Video yuklash
         ydl_opts = {
+            'outtmpl': filename,
+            'quiet': True,
             'format': 'mp4',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+            ydl.download([url])
 
+        # Faylni file.io ga yuklash
         with open(filename, 'rb') as f:
-            response = requests.post("https://file.io", files={"file": f})
-            file_url = response.json().get("link")
+            response = requests.post('https://file.io', files={'file': f})
 
+        if response.status_code == 200:
+            file_url = response.json().get("link")
+        else:
+            return jsonify({"error": "Faylni yuklab bo‘lmadi"}), 500
+
+        # Lokal faylni o‘chirish
         os.remove(filename)
+
         return jsonify({"file": file_url})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+
+@app.route('/')
+def home():
+    return "Server ishlayapti", 200
+
+
+@app.route('/health')
+def health():
+    return "OK", 200
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)

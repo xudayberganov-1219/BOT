@@ -1,60 +1,39 @@
-from flask import Flask, request, jsonify
-import yt_dlp
 import requests
-import os
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
 
-app = Flask(__name__)
+MISTRAL_API_KEY = "9JZcncIN9tSDXyA00KqX6f2GC7soAEW0"
+TELEGRAM_BOT_TOKEN = "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44"
 
-@app.route('/download', methods=['POST'])
-def download_video():
-    try:
-        data = request.get_json()
-        url = data.get("url")
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_input = update.message.text
 
-        # URL tekshiruvi
-        if not url or not url.startswith("http"):
-            return jsonify({"error": "Yaroqsiz URL"}), 400
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-        # Foyil nomi
-        filename = "video.mp4"
+    data = {
+        "model": "mistral-large-latest",
+        "messages": [
+            {"role": "system", "content": "Sen tajribali matematik bo‘lgan sun’iy intellektsan. Foydalanuvchining savoliga tushunarli qilib fikr yuritib javob ber."},
+            {"role": "user", "content": user_input}
+        ]
+    }
 
-        # Video yuklash
-        ydl_opts = {
-            'outtmpl': filename,
-            'quiet': True,
-            'format': 'mp4',
-        }
+    response = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=data)
+    if response.status_code == 200:
+        reply = response.json()['choices'][0]['message']['content']
+    else:
+        reply = f"❌ Xatolik yuz berdi: {response.status_code}"
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+    await update.message.reply_text(reply)
 
-        # Faylni file.io ga yuklash
-        with open(filename, 'rb') as f:
-            response = requests.post('https://file.io', files={'file': f})
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    print("🤖 Bot ishga tushdi...")
+    app.run_polling()
 
-        if response.status_code == 200:
-            file_url = response.json().get("link")
-        else:
-            return jsonify({"error": "Faylni yuklab bo‘lmadi"}), 500
-
-        # Lokal faylni o‘chirish
-        os.remove(filename)
-
-        return jsonify({"file": file_url})
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/')
-def home():
-    return "Server ishlayapti", 200
-
-
-@app.route('/health')
-def health():
-    return "OK", 200
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+if __name__ == "__main__":
+    main()

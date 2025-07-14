@@ -14,9 +14,9 @@ TELEGRAM_BOT_TOKEN = "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44"
 
 user_ids = set()
 
-# 🧠 Foydalanuvchi xabari bo‘yicha Mistral javobi
+# 🧠 Mistral API orqali matematik javob
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
+    user_input = update.message.text.lower()
 
     uid = update.effective_user.id
     if uid not in user_ids:
@@ -24,6 +24,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open("users.txt", "a") as f:
             f.write(f"{uid}\n")
 
+    # Cos(120°) bo'yicha maxsus javob
+    if "cos(120" in user_input or "cosinus 120" in user_input:
+        reply = (
+            "🔢 Cosinus funksiyasining 120° burchakdagi qiymatini hisoblaymiz:\n\n"
+            "cos(120°) = cos(180° - 60°)\n"
+            "          = -cos(60°)\n"
+            "          = -1/2\n\n"
+            "✅ Natija: cos(120°) = -1/2"
+        )
+        await update.message.reply_text(reply)
+        return
+
+    # Aks holda — Mistral AI javobi
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
         "Content-Type": "application/json"
@@ -45,7 +58,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-# 👋 /start buyrug‘i bilan Inline tugmalarni yuborish
+# 👋 /start komandasi — salom + inline tugma
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid not in user_ids:
@@ -68,7 +81,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-# 📚 Tugmalar bosilganda javob berish
+# 📋 Tugmalarni boshqarish
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -76,9 +89,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "help":
         await query.edit_message_text(
-            "🧠 Bu bot orqali matematik savollar berishingiz mumkin.\n\n"
-            "Foydalanish uchun faqat xabaringizni yozing:\n"
-            "Misol: 'Kvadrat tenglamaning formulasi qanday?'"
+            "📘 Yordam:\n"
+            "Bot orqali matematik savollarni yozing.\n"
+            "Misol: 'Pifagor teoremasi qanday ishlaydi?' yoki 'cos(120°)'"
         )
     elif query.data == "users":
         total = len(user_ids)

@@ -9,11 +9,14 @@ from telegram.ext import (
     ContextTypes,
     filters
 )
+from telegram.error import Forbidden
 
-MISTRAL_API_KEY = os.getenv("9JZcncIN9tSDXyA00KqX6f2GC7soAEW0")
-TELEGRAM_BOT_TOKEN = os.getenv("7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44")
+# 🔐 Tokenlarni to‘g‘ri tarzda yozish
+MISTRAL_API_KEY = "9JZcncIN9tSDXyA00KqX6f2GC7soAEW0"
+TELEGRAM_BOT_TOKEN = "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44"
+CHANNEL_USERNAME = "@IT_kanal_oo1"
+
 BASE_COUNT = 122
-
 user_ids = set()
 
 # ✅ Foydalanuvchini faylga yozish
@@ -24,10 +27,26 @@ def append_user(uid):
     except Exception as e:
         print(f"❌ Faylga yozishda xatolik: {e}")
 
+# 📌 Kanalga a’zo ekanligini tekshirish
+async def is_user_subscribed(bot, user_id):
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except Forbidden:
+        return False
+    except Exception as e:
+        print(f"❌ Tekshirishda xatolik: {e}")
+        return False
+
 # 📥 Foydalanuvchi xabari
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
     uid = update.effective_user.id
+
+    # ❌ Kanalga a'zo bo'lmasa
+    if not await is_user_subscribed(context.bot, uid):
+        await update.message.reply_text(f"❗ Iltimos, avval {CHANNEL_USERNAME} kanaliga obuna bo‘ling va qayta urinib ko‘ring.")
+        return
 
     if uid not in user_ids:
         user_ids.add(uid)
@@ -68,6 +87,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # /start komandasi
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
+
+    # ❌ Kanalga a'zo bo'lmasa
+    if not await is_user_subscribed(context.bot, uid):
+        await update.message.reply_text(
+            f"👋 Salom, {update.effective_user.first_name}!\n"
+            f"📛 Iltimos, avval {CHANNEL_USERNAME} kanaliga obuna bo‘ling.\n"
+            f"✅ Keyin qayta /start buyrug‘ini yuboring."
+        )
+        return
+
     if uid not in user_ids:
         user_ids.add(uid)
         append_user(uid)
@@ -93,6 +122,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     uid = query.from_user.id
 
+    if not await is_user_subscribed(context.bot, uid):
+        await query.edit_message_text(f"❗ Avval {CHANNEL_USERNAME} kanaliga obuna bo‘ling.")
+        return
+
     if query.data == "help":
         await query.edit_message_text(
             "📘 Yordam:\n"
@@ -117,8 +150,8 @@ async def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # 💡 Webhook URL bu yerda
-    WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # Masalan: https://math-genius.onrender.com/
+    # 🔗 Webhook manzilini olamiz
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://math-genius.onrender.com/"
 
     await app.initialize()
     await app.start()

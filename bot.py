@@ -1,3 +1,4 @@
+import os
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -9,20 +10,40 @@ from telegram.ext import (
     filters
 )
 
-MISTRAL_API_KEY = "9JZcncIN9tSDXyA00KqX6f2GC7soAEW0"
-TELEGRAM_BOT_TOKEN = "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44"
+
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "9JZcncIN9tSDXyA00KqX6f2GC7soAEW0")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44")
+
+USERS_FILE = "users.txt"
+BASE_COUNT = 122
 
 user_ids = set()
-BASE_COUNT = 122  # 💥 Boshlang'ich foydalanuvchi soni (qo'l bilan berilgan)
 
-# 🧠 Mistral AI orqali matematik javob
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text.lower()
-    uid = update.effective_user.id
+# 📁 Fayldan user ID'larni yuklash
+def load_users():
+    global user_ids
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r") as f:
+            user_ids = set(map(int, f.read().splitlines()))
+    else:
+        user_ids = set()
 
+# ✏️ Yangi foydalanuvchini faylga yozish
+def append_user(uid):
     if uid not in user_ids:
         user_ids.add(uid)
-        append_user(uid)
+        try:
+            with open(USERS_FILE, "a") as f:
+                f.write(f"{uid}\n")
+        except Exception as e:
+            print(f"❌ Faylga yozishda xatolik: {e}")
+
+# 🤖 Mistral API'ga so'rov yuborish
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    user_input = update.message.text.lower()
+
+    append_user(uid)
 
     if "cos(120" in user_input or "cosinus 120" in user_input:
         reply = (
@@ -43,79 +64,58 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = {
         "model": "mistral-large-latest",
         "messages": [
-            {"role": "system", "content": "Sen tajribali matematik bo‘lgan sun’iy intellektsan. Foydalanuvchining savoliga tushunarli qilib fikr yuritib javob ber."},
+            {"role": "system", "content": "Sen tajribali matematik bo‘lgan sun’iy intellektsan. Foydalanuvchining savoliga tushunarli qilib javob ber."},
             {"role": "user", "content": user_input}
         ]
     }
 
-    response = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=data)
-    if response.status_code == 200:
-        reply = response.json()['choices'][0]['message']['content']
-    else:
-        reply = f"❌ Xatolik yuz berdi: {response.status_code}"
+    try:
+        response = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=data)
+        if response.status_code == 200:
+            reply = response.json()['choices'][0]['message']['content']
+        else:
+            reply = f"❌ API xatolik: {response.status_code}"
+    except Exception as e:
+        reply = f"❌ APIga ulanishda xatolik: {e}"
 
     await update.message.reply_text(reply)
 
-# 👋 /start komandasi
+# /start komandasi
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if uid not in user_ids:
-        user_ids.add(uid)
-        append_user(uid)
+    append_user(uid)
 
     total_users = BASE_COUNT + len(user_ids)
-
     keyboard = [
         [InlineKeyboardButton("📚 Yordam", callback_data="help")],
         [InlineKeyboardButton("📊 Foydalanuvchilar soni", callback_data="users")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
         f"👋 Salom, {update.effective_user.first_name}!\n"
-        f"🤖 Men matematik savollarga javob beradigan sun’iy intellektman.\n"
-        f"📊 Botdan jami foydalanuvchilar: {total_users} ta.",
-        reply_markup=reply_markup
+        f"📊 Botdan foydalanuvchilar soni: {total_users} ta.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# 📋 Tugmalarni boshqarish
+# Inline tugmalarni boshqarish
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
+    append_user(uid)
 
     if query.data == "help":
-        await query.edit_message_text(
-            "📘 Yordam:\n"
-            "Bot orqali matematik savollarni yozing.\n"
-            "Misol: 'Pifagor teoremasi qanday ishlaydi?' yoki 'cos(120°)'"
-        )
+        await query.edit_message_text("📘 Matematik savolni yozing. Masalan: 'cos(120)' yoki 'Pifagor teoremasi'.")
     elif query.data == "users":
         total = BASE_COUNT + len(user_ids)
-        await query.edit_message_text(f"📊 Jami foydalanuvchilar: {total} ta.")
+        await query.edit_message_text(f"📊 Bot foydalanuvchilari: {total} ta.")
 
-# ✅ Foydalanuvchini faylga yozish (avtomatik)
-def append_user(uid):
-    try:
-        with open("users.txt", "a") as f:
-            f.write(f"{uid}\n")
-    except Exception as e:
-        print(f"❌ Faylga yozishda xatolik: {e}")
-
-# 🚀 Botni ishga tushirish
+# Botni ishga tushirish
 def main():
-    global user_ids
-    try:
-        with open("users.txt", "r") as f:
-            user_ids = set(map(int, f.read().splitlines()))
-    except FileNotFoundError:
-        user_ids = set()
-
+    load_users()
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
     print("🤖 Bot ishga tushdi...")
     app.run_polling()
 

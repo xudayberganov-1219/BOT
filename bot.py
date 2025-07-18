@@ -1,123 +1,101 @@
 import os
-import requests
+import logging
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
+import requests
 
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "9JZcncIN9tSDXyA00KqX6f2GC7soAEW0")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44")
+# --- Sozlamalar ---
+BOT_TOKEN = os.getenv("7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44")  # Render dagi Environment variable
+MISTRAL_API_KEY = os.getenv("9JZcncIN9tSDXyA00KqX6f2GC7soAEW0")
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+APP_URL = os.getenv("https://math-genius.onrender.com")  # Masalan: https://math-genius.onrender.com
 
-USERS_FILE = "users.txt"
-BASE_COUNT = 122
+# --- Logging ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-user_ids = set()
+# --- Flask App ---
+app = Flask(__name__)
+application = Application.builder().token(BOT_TOKEN).build()
 
-# 📁 Fayldan user ID'larni yuklash
-def load_users():
-    global user_ids
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            user_ids = set(map(int, f.read().splitlines()))
-    else:
-        user_ids = set()
+# --- /start komandasi ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    if not os.path.exists("users.txt"):
+        open("users.txt", "w").close()
 
-# ✏️ Yangi foydalanuvchini faylga yozish
-def append_user(uid):
-    if uid not in user_ids:
-        user_ids.add(uid)
-        try:
-            with open(USERS_FILE, "a") as f:
-                f.write(f"{uid}\n")
-        except Exception as e:
-            print(f"❌ Faylga yozishda xatolik: {e}")
+    with open("users.txt", "r+") as f:
+        users = f.read().splitlines()
+        if user_id not in users:
+            f.write(user_id + "\n")
 
-# 🤖 Mistral API'ga so'rov yuborish
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    user_input = update.message.text.lower()
+    keyboard = [
+        [InlineKeyboardButton("Statistika", callback_data="stats")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("🤖 Menga matematik savol yuboring:", reply_markup=reply_markup)
 
-    append_user(uid)
+# --- Callback tugmalar ---
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-    if "cos(120" in user_input or "cosinus 120" in user_input:
-        reply = (
-            "🔢 Cosinus funksiyasining 120° burchakdagi qiymatini hisoblaymiz:\n\n"
-            "cos(120°) = cos(180° - 60°)\n"
-            "          = -cos(60°)\n"
-            "          = -1/2\n\n"
-            "✅ Natija: cos(120°) = -1/2"
-        )
-        await update.message.reply_text(reply)
-        return
+    if query.data == "stats":
+        if not os.path.exists("users.txt"):
+            await query.edit_message_text("Foydalanuvchilar ro'yxati mavjud emas.")
+            return
 
+        with open("users.txt", "r") as f:
+            count = len(f.readlines())
+        await query.edit_message_text(f"👥 Bot foydalanuvchilari soni: {count}")
+
+# --- Mistral API orqali javob olish ---
+def ask_mistral(prompt: str) -> str:
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
         "Content-Type": "application/json"
     }
-
-    data = {
-        "model": "mistral-large-latest",
-        "messages": [
-            {"role": "system", "content": "Sen tajribali matematik bo‘lgan sun’iy intellektsan. Foydalanuvchining savoliga tushunarli qilib javob ber."},
-            {"role": "user", "content": user_input}
-        ]
+    json_data = {
+        "model": "mistral-small",
+        "messages": [{"role": "user", "content": prompt}]
     }
-
     try:
-        response = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=data)
-        if response.status_code == 200:
-            reply = response.json()['choices'][0]['message']['content']
-        else:
-            reply = f"❌ API xatolik: {response.status_code}"
+        response = requests.post(MISTRAL_URL, json=headers, json=json_data)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        reply = f"❌ APIga ulanishda xatolik: {e}"
+        logger.error(f"Mistral API error: {e}")
+        return "❌ Xatolik yuz berdi. Keyinroq urinib ko‘ring."
 
-    await update.message.reply_text(reply)
+# --- Matn kelganda ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = update.message.text
+    await update.message.reply_chat_action("typing")
+    response = ask_mistral(prompt)
+    await update.message.reply_text(response)
 
-# /start komandasi
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    append_user(uid)
+# --- Handlers ro‘yxatdan o‘tkazish ---
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(button))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    total_users = BASE_COUNT + len(user_ids)
-    keyboard = [
-        [InlineKeyboardButton("📚 Yordam", callback_data="help")],
-        [InlineKeyboardButton("📊 Foydalanuvchilar soni", callback_data="users")]
-    ]
-    await update.message.reply_text(
-        f"👋 Salom, {update.effective_user.first_name}!\n"
-        f"📊 Botdan foydalanuvchilar soni: {total_users} ta.",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+# --- Webhook sozlash ---
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+async def webhook():
+    await application.update_queue.put(Update.de_json(request.get_json(force=True), application.bot))
+    return "ok"
 
-# Inline tugmalarni boshqarish
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    uid = query.from_user.id
-    append_user(uid)
+@app.route("/")
+def index():
+    return "🤖 Bot ishga tushdi!"
 
-    if query.data == "help":
-        await query.edit_message_text("📘 Matematik savolni yozing. Masalan: 'cos(120)' yoki 'Pifagor teoremasi'.")
-    elif query.data == "users":
-        total = BASE_COUNT + len(user_ids)
-        await query.edit_message_text(f"📊 Bot foydalanuvchilari: {total} ta.")
+async def set_webhook():
+    await application.bot.set_webhook(url=f"{APP_URL}/{BOT_TOKEN}")
 
-# Botni ishga tushirish
-def main():
-    load_users()
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("🤖 Bot ishga tushdi...")
-    app.run_polling()
-
+# --- App run ---
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(set_webhook())
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

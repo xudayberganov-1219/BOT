@@ -1,5 +1,6 @@
 import os
 import requests
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,15 +12,14 @@ from telegram.ext import (
 )
 from telegram.error import Forbidden
 
-# 🔐 Tokenlarni to‘g‘ri tarzda yozish
+# 📌 Tokenlar va sozlamalar
 MISTRAL_API_KEY = "9JZcncIN9tSDXyA00KqX6f2GC7soAEW0"
 TELEGRAM_BOT_TOKEN = "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44"
 CHANNEL_USERNAME = "@IT_kanal_oo1"
-
 BASE_COUNT = 122
 user_ids = set()
 
-# ✅ Foydalanuvchini faylga yozish
+# ✅ Faylga yozish
 def append_user(uid):
     try:
         with open("users.txt", "a") as f:
@@ -27,7 +27,7 @@ def append_user(uid):
     except Exception as e:
         print(f"❌ Faylga yozishda xatolik: {e}")
 
-# 📌 Kanalga a’zo ekanligini tekshirish
+# 📌 Kanalga obuna bo‘lganini tekshirish
 async def is_user_subscribed(bot, user_id):
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
@@ -35,34 +35,35 @@ async def is_user_subscribed(bot, user_id):
     except Forbidden:
         return False
     except Exception as e:
-        print(f"❌ Tekshirishda xatolik: {e}")
+        print(f"❌ Tekshiruvda xatolik: {e}")
         return False
 
-# 📥 Foydalanuvchi xabari
+# 📥 Xabarlarni ko‘rib chiqish
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
     uid = update.effective_user.id
 
-    # ❌ Kanalga a'zo bo'lmasa
+    # ❌ Obuna bo‘lmagan bo‘lsa
     if not await is_user_subscribed(context.bot, uid):
-        await update.message.reply_text(f"❗ Iltimos, avval {CHANNEL_USERNAME} kanaliga obuna bo‘ling va qayta urinib ko‘ring.")
+        await update.message.reply_text(f"❗ Avval {CHANNEL_USERNAME} kanaliga obuna bo‘ling.")
         return
 
     if uid not in user_ids:
         user_ids.add(uid)
         append_user(uid)
 
+    # 🎯 Maxsus misol
     if "cos(120" in user_input or "cosinus 120" in user_input:
-        reply = (
+        await update.message.reply_text(
             "🔢 Cosinus funksiyasining 120° burchakdagi qiymatini hisoblaymiz:\n\n"
             "cos(120°) = cos(180° - 60°)\n"
             "          = -cos(60°)\n"
             "          = -1/2\n\n"
             "✅ Natija: cos(120°) = -1/2"
         )
-        await update.message.reply_text(reply)
         return
 
+    # 🧠 Mistral AI javobi
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
         "Content-Type": "application/json"
@@ -84,17 +85,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-# /start komandasi
+# 🚀 /start komandasi
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
-    # ❌ Kanalga a'zo bo'lmasa
     if not await is_user_subscribed(context.bot, uid):
-        await update.message.reply_text(
-            f"👋 Salom, {update.effective_user.first_name}!\n"
-            f"📛 Iltimos, avval {CHANNEL_USERNAME} kanaliga obuna bo‘ling.\n"
-            f"✅ Keyin qayta /start buyrug‘ini yuboring."
-        )
+        await update.message.reply_text(f"❗ Avval {CHANNEL_USERNAME} kanaliga obuna bo‘ling.")
         return
 
     if uid not in user_ids:
@@ -116,7 +112,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-# Tugmalar
+# ⌨️ Tugmalar
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -136,7 +132,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total = BASE_COUNT + len(user_ids)
         await query.edit_message_text(f"📊 Jami foydalanuvchilar: {total} ta.")
 
-# Asosiy funksiya
+# 🧠 Asosiy
 async def main():
     global user_ids
     try:
@@ -150,20 +146,11 @@ async def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # 🔗 Webhook manzilini olamiz
-    WEBHOOK_URL = os.getenv("WEBHOOK_URL") or "https://math-genius.onrender.com/"
+    print("🤖 Bot ishga tushdi (polling)...")
+    await app.run_polling()
 
-    await app.initialize()
-    await app.start()
-    await app.bot.set_webhook(WEBHOOK_URL)
-    print("🤖 Webhook o‘rnatildi!")
-    await app.updater.start_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 8080)),
-        url_path="",
-        webhook_url=WEBHOOK_URL,
-    )
-
+# 🏁 Ishga tushirish
 if __name__ == "__main__":
     import asyncio
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())

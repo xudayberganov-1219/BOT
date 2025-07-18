@@ -13,18 +13,17 @@ MISTRAL_API_KEY = "9JZcncIN9tSDXyA00KqX6f2GC7soAEW0"
 TELEGRAM_BOT_TOKEN = "7950074019:AAH_lofQm_K3OjXzuiwzlWVnKovw_cLVO44"
 
 user_ids = set()
+BASE_COUNT = 122  # 💥 Boshlang'ich foydalanuvchi soni (qo'l bilan berilgan)
 
-# 🧠 Mistral API orqali matematik javob
+# 🧠 Mistral AI orqali matematik javob
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
-
     uid = update.effective_user.id
+
     if uid not in user_ids:
         user_ids.add(uid)
-        with open("users.txt", "a") as f:
-            f.write(f"{uid}\n")
+        append_user(uid)
 
-    # Cos(120°) bo'yicha maxsus javob
     if "cos(120" in user_input or "cosinus 120" in user_input:
         reply = (
             "🔢 Cosinus funksiyasining 120° burchakdagi qiymatini hisoblaymiz:\n\n"
@@ -36,7 +35,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
         return
 
-    # Aks holda — Mistral AI javobi
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
         "Content-Type": "application/json"
@@ -58,15 +56,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-# 👋 /start komandasi — salom + inline tugma
+# 👋 /start komandasi
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     if uid not in user_ids:
         user_ids.add(uid)
-        with open("users.txt", "a") as f:
-            f.write(f"{uid}\n")
+        append_user(uid)
 
-    total_users = len(user_ids)
+    total_users = BASE_COUNT + len(user_ids)
 
     keyboard = [
         [InlineKeyboardButton("📚 Yordam", callback_data="help")],
@@ -94,8 +91,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Misol: 'Pifagor teoremasi qanday ishlaydi?' yoki 'cos(120°)'"
         )
     elif query.data == "users":
-        total = len(user_ids)
+        total = BASE_COUNT + len(user_ids)
         await query.edit_message_text(f"📊 Jami foydalanuvchilar: {total} ta.")
+
+# ✅ Foydalanuvchini faylga yozish (avtomatik)
+def append_user(uid):
+    try:
+        with open("users.txt", "a") as f:
+            f.write(f"{uid}\n")
+    except Exception as e:
+        print(f"❌ Faylga yozishda xatolik: {e}")
 
 # 🚀 Botni ishga tushirish
 def main():
@@ -107,7 +112,6 @@ def main():
         user_ids = set()
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
